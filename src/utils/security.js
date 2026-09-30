@@ -1,5 +1,26 @@
 const WEIGHTS = { critical: 20, high: 10, medium: 3, low: 1 }
 
+// Download-and-execute: a curl/wget download piped (or `;`-chained) into a
+// shell or Python. Shared by the skill and MCP rules so the two copies cannot
+// drift apart.
+// - Flags may come before or after the URL, alone (`-fsSL`, `-qO-`, `-O -`),
+//   with a value (`-o /tmp/i.sh`, `--retry 3`) or with a quoted value
+//   (`--proto '=https'`). Flags are separated by spaces, tabs or a `\` line
+//   continuation, so a flag-looking word on a later line does not count.
+// - The interpreter may be run by absolute path (`/bin/sh`) or through
+//   `sudo [flags]`, and must be a whole word, so `| shasum` or `; shows ...`
+//   do not match.
+const SEP = String.raw`(?:[ \t]|\\\r?\n)+`
+const QUOTED = String.raw`'[^'\n]{0,200}'|"[^"\n]{0,200}"`
+const FLAG = String.raw`-(?:[^\s'"|;&]|${QUOTED})*`
+const VALUE = String.raw`(?:${QUOTED}|[^\s'"|;&-][^\s'"|;&]*)`
+const FLAGS = String.raw`(?:${SEP}${FLAG}(?:${SEP}${VALUE})?)*?`
+const DOWNLOAD_AND_EXECUTE = new RegExp(
+  String.raw`(?:curl|wget)${FLAGS}(?:\s|\\\r?\n)+['"]?https?:\/\/[^\s'"]+['"]?${FLAGS}` +
+    String.raw`\s*[|;]\s*(?:sudo(?:[ \t]+-\S*)*[ \t]+)?(?:(?:\/[^\s/]+)*\/)?` +
+    String.raw`(?:bash|sh|zsh|python[23]?)\b`,
+)
+
 const MCP_NETWORK_PATTERNS = [
   {
     severity: 'medium',
@@ -41,8 +62,7 @@ const MCP_NETWORK_PATTERNS = [
   {
     severity: 'critical',
     category: 'command_injection',
-    pattern:
-      /(?:curl|wget)\s+['"]?https?:\/\/[^\s'"]+['"]?\s*[|;]\s*(?:bash|sh|zsh|python)/,
+    pattern: DOWNLOAD_AND_EXECUTE,
     description: 'MCP server downloads and executes remote code',
   },
 ]
@@ -83,8 +103,7 @@ const PATTERNS = [
   {
     severity: 'critical',
     category: 'command_injection',
-    pattern:
-      /(?:curl|wget)\s+['"]?https?:\/\/[^\s'"]+['"]?\s*[|;]\s*(?:bash|sh|zsh|python)/,
+    pattern: DOWNLOAD_AND_EXECUTE,
     description: 'Command injection: download-and-execute pattern',
   },
 
