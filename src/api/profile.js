@@ -9,7 +9,7 @@ import {
   validateProfile,
 } from '../utils/profile.js'
 import { UserError } from '../utils/errors.js'
-import { fetchWithValidatedRedirects } from '../utils/fetch-redirects.js'
+import { fetchFollowingRedirects } from '../utils/http-fetch.js'
 
 export async function apiProfileSave(name, options = {}) {
   let agentsData
@@ -156,33 +156,22 @@ function assertAllowedProfileHost(url) {
   }
 }
 
-function profileRedirectError(kind, context) {
-  if (kind === 'missing-location') {
-    return new UserError(
-      `Redirect from ${context.current} did not include a Location header.`,
-      { code: 'PROFILE_REDIRECT_INVALID' },
-    )
-  }
-  if (kind === 'invalid-location') {
-    return new UserError(
-      `Redirect from ${context.current} pointed at an invalid URL: ${context.location}`,
-      { code: 'PROFILE_REDIRECT_INVALID' },
-    )
-  }
-  return new UserError(
-    `Too many redirects while importing profile from ${context.initial} (limit ${context.maxRedirects}).`,
-    {
-      suggestion: 'Use a direct link to the raw profile file.',
-      code: 'PROFILE_REDIRECT_LIMIT',
-    },
-  )
-}
-
+/**
+ * Fetch a profile body, following redirects by hand.
+ *
+ * `redirect: 'follow'` would let any allowed host bounce the request to an
+ * arbitrary origin, so the allow-list has to be re-checked on every hop rather
+ * than only on the URL the user supplied. The loop itself lives in
+ * `utils/http-fetch.js` so the npm tarball download can share it instead of
+ * growing a second copy.
+ */
 async function fetchProfileBody(url) {
-  const { response, url: finalUrl } = await fetchWithValidatedRedirects(url, {
+  const { response, url: finalUrl } = await fetchFollowingRedirects(url, {
     assertAllowed: assertAllowedProfileHost,
     maxRedirects: MAX_PROFILE_REDIRECTS,
-    createError: profileRedirectError,
+    subject: `importing profile from ${url}`,
+    codeBase: 'PROFILE_REDIRECT',
+    suggestion: 'Use a direct link to the raw profile file.',
   })
 
   if (!response.ok) {
@@ -190,6 +179,7 @@ async function fetchProfileBody(url) {
       code: 'PROFILE_FETCH_FAILED',
     })
   }
+
   return response.text()
 }
 
