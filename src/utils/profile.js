@@ -6,7 +6,7 @@ import { listMcpServers, addMcpServer } from './mcp.js'
 import { readLock, getGlobalLockPath, getProjectLockPath } from './lockfile.js'
 import { resolveSource } from './resolver.js'
 import { installSkill } from './installer.js'
-import { scanSkill, classifyScore } from './security.js'
+import { scanSkill, scanMcpServerConfig, classifyScore } from './security.js'
 import { detectAgents } from '../commands/setup.js'
 
 export { detectAgents }
@@ -440,11 +440,41 @@ export async function applyAgentConfig(agentFlag, configData) {
   return results
 }
 
-export async function applyMcpServers(agentFlag, servers) {
+export async function applyMcpServers(agentFlag, servers, options = {}) {
   if (!servers || typeof servers !== 'object') return []
 
   const results = []
   for (const [name, serverConfig] of Object.entries(servers)) {
+    // Profiles can come from `profile import`, so their MCP servers get the
+    // same scan as skill-sourced ones before they reach agent config.
+    const security = scanMcpServerConfig(name, serverConfig)
+    const level = classifyScore(security.score, security.issues)
+    const flagged = level === 'danger' || level === 'review'
+    if (flagged && !options.yes) {
+      const issues = security.issues.filter((i) => i.severity !== 'low')
+      console.error(
+        `\n⚠️  MCP server "${name}" blocked by security scan (score: ${security.score}/100). Review the profile, or re-run with --yes to apply it anyway.`,
+      )
+      for (const i of issues)
+        console.error(`  [${i.severity}] ${i.description}`)
+      results.push({
+        name,
+        success: false,
+        blocked: true,
+        level,
+        reason: `security scan blocked (score: ${security.score}/100): ${issues
+          .map((i) => `[${i.severity}] ${i.description}`)
+          .join('; ')}`,
+      })
+      continue
+    }
+    // --yes forces past the gate but never silently
+    if (flagged) {
+      console.error(
+        `\n⚠️  [${level.toUpperCase()}] --yes forcing MCP server "${name}" despite security scan (score: ${security.score}/100).`,
+      )
+    }
+
     try {
       const success = await addMcpServer(agentFlag, name, serverConfig)
       results.push({ name, success })
@@ -566,7 +596,7 @@ export async function applyProfileEntry(agentFlag, entry, options = {}) {
   const result = {
     agent: agentFlag,
     config: { applied: [], skipped: [] },
-    mcpServers: { applied: [], skipped: [] },
+    mcpServers: { applied: [], skipped: [], blocked: [] },
     skills: { applied: [], skipped: [], failed: [] },
     instructions: { applied: [], skipped: [] },
     backup: null,
@@ -583,9 +613,15 @@ export async function applyProfileEntry(agentFlag, entry, options = {}) {
   }
 
   if (!options.skipMcp && entry.mcpServers) {
-    const mcpResult = await applyMcpServers(agentFlag, entry.mcpServers)
+    const mcpResult = await applyMcpServers(
+      agentFlag,
+      entry.mcpServers,
+      options,
+    )
     for (const r of mcpResult) {
       if (r.success) result.mcpServers.applied.push(r.name)
+      else if (r.blocked)
+        result.mcpServers.blocked.push({ name: r.name, reason: r.reason })
       else result.mcpServers.skipped.push(r.name)
     }
   } else {
