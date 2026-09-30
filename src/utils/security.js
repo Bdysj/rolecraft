@@ -10,15 +10,25 @@ const WEIGHTS = { critical: 20, high: 10, medium: 3, low: 1 }
 // - The interpreter may be run by absolute path (`/bin/sh`) or through
 //   `sudo [flags]`, and must be a whole word, so `| shasum` or `; shows ...`
 //   do not match.
+// - Python given its program as an argument (`python3 -c '...'`,
+//   `python3 -m json.tool`) only reads the download as data, the usual way
+//   skills pretty-print an API response, so it does not count, unless that
+//   program can run code (`exec`, `eval`, `subprocess`, `-m code`, ...).
+//   `python3 -` and every shell form still count.
 const SEP = String.raw`(?:[ \t]|\\\r?\n)+`
 const QUOTED = String.raw`'[^'\n]{0,200}'|"[^"\n]{0,200}"`
 const FLAG = String.raw`-(?:[^\s'"|;&]|${QUOTED})*`
 const VALUE = String.raw`(?:${QUOTED}|[^\s'"|;&-][^\s'"|;&]*)`
 const FLAGS = String.raw`(?:${SEP}${FLAG}(?:${SEP}${VALUE})?)*?`
+const RUNS_CODE = String.raw`\b(?:exec|eval|compile|runpy|__import__|importlib|subprocess|os\.system|pty)\b`
+const PYTHON_DATA_ONLY =
+  String.raw`[ \t]+(?:-[A-Za-z]+[ \t]+)*-[A-Za-z]*[cm]` +
+  String.raw`(?![ \t]+code\b)(?![\s\S]{0,300}?${RUNS_CODE})`
+const PYTHON = String.raw`python[23]?\b(?!${PYTHON_DATA_ONLY})`
 const DOWNLOAD_AND_EXECUTE = new RegExp(
   String.raw`(?:curl|wget)${FLAGS}(?:\s|\\\r?\n)+['"]?https?:\/\/[^\s'"]+['"]?${FLAGS}` +
     String.raw`\s*[|;]\s*(?:sudo(?:[ \t]+-\S*)*[ \t]+)?(?:(?:\/[^\s/]+)*\/)?` +
-    String.raw`(?:bash|sh|zsh|python[23]?)\b`,
+    String.raw`(?:(?:bash|sh|zsh)\b|${PYTHON})`,
 )
 
 const MCP_NETWORK_PATTERNS = [
