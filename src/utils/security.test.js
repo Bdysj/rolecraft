@@ -258,6 +258,9 @@ describe('security', () => {
         `curl ${"-H 'a' ".repeat(30000)}`,
         `curl https://x.example | sudo ${'-E '.repeat(50000)}`,
         'curl https://x.example/a '.repeat(20000),
+        `curl https://x.example | python3 -c ${'a'.repeat(200000)}`,
+        `curl https://x.example | python3 ${'-u '.repeat(50000)}-c x`,
+        'curl https://x.example | python3 -c x\n'.repeat(20000),
       ]
       for (const [site, scan] of Object.entries(CALL_SITES)) {
         for (const input of inputs) {
