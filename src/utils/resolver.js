@@ -343,36 +343,39 @@ async function resolveGitUrlInternal(source) {
   const tmpDir = mkdtempSync(join(tmpdir(), 'rolecraft-git-'))
   const url = normalizeGitUrl(source)
 
+  // Remove the clone on every exit, including a failed clone: git leaves the
+  // directory mkdtemp created in place when it cannot fetch the repository.
   try {
-    runGit(['clone', '--depth', '1', url, tmpDir])
-  } catch {
-    throw new Error(`Failed to clone repository from ${source}`)
-  }
+    try {
+      runGit(['clone', '--depth', '1', url, tmpDir])
+    } catch {
+      throw new Error(`Failed to clone repository from ${source}`)
+    }
 
-  const found = await scanForSkill(tmpDir)
+    const found = await scanForSkill(tmpDir)
 
-  if (found.length === 0) {
+    if (found.length === 0) {
+      throw new Error(`No SKILL.md found in repository ${source}`)
+    }
+
+    const enriched = await Promise.all(
+      found.map(async (f) => {
+        const e = await enrichSkill(f)
+        return {
+          ...e,
+          owner: e.owner === 'local' ? 'remote' : e.owner,
+          slug:
+            e.slug === 'unknown' || e.slug === e.name
+              ? `remote/${e.name}`
+              : e.slug,
+        }
+      }),
+    )
+
+    return { skills: enriched, sourcePath: source, sourceType: 'git' }
+  } finally {
     await rm(tmpDir, { recursive: true, force: true }).catch(() => {})
-    throw new Error(`No SKILL.md found in repository ${source}`)
   }
-
-  const enriched = await Promise.all(
-    found.map(async (f) => {
-      const e = await enrichSkill(f)
-      return {
-        ...e,
-        owner: e.owner === 'local' ? 'remote' : e.owner,
-        slug:
-          e.slug === 'unknown' || e.slug === e.name
-            ? `remote/${e.name}`
-            : e.slug,
-      }
-    }),
-  )
-
-  await rm(tmpDir, { recursive: true, force: true }).catch(() => {})
-
-  return { skills: enriched, sourcePath: source, sourceType: 'git' }
 }
 
 function isNpmRef(source) {
