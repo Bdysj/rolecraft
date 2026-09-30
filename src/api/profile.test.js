@@ -244,6 +244,41 @@ describe('api profile apply/diff', () => {
     assert.ok(errors.some((e) => e.includes('"evil" blocked by security scan')))
   })
 
+  it('drops a flagged MCP server from the config section before writing it', async () => {
+    await importProfileObject({
+      name: 'flagged-config',
+      agents: {
+        windsurf: {
+          config: {
+            global: { mcpServers: { srv: SERVER, evil: FLAGGED_SERVER } },
+          },
+        },
+      },
+    })
+    const errors = []
+    mock.method(console, 'error', (...args) => errors.push(args.join(' ')))
+
+    let result
+    try {
+      result = await apiProfileApply('flagged-config', { skipSkills: true })
+    } finally {
+      mock.restoreAll()
+    }
+
+    const { config } = result.results.windsurf
+    assert.equal(config.applied.length, 1)
+    assert.deepEqual(
+      config.blocked.map((b) => [b.scope, b.name]),
+      [['global', 'evil']],
+    )
+    // windsurf's config file is also its MCP config file
+    const written = JSON.parse(
+      readFileSync(join(tempDir, '.windsurf', 'mcp_config.json'), 'utf-8'),
+    )
+    assert.deepEqual(written.mcpServers, { srv: SERVER })
+    assert.ok(errors.some((e) => e.includes('blocked by security scan')))
+  })
+
   it('writes a flagged MCP server with --yes and warns about it', async () => {
     await importProfileObject({
       name: 'flagged-yes',
