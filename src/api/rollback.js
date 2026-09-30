@@ -13,7 +13,7 @@ import {
   removeLatestBackup,
   assertSafeSlug,
 } from '../utils/installer.js'
-import { getAgentByFlag } from '../agents.js'
+import agents, { getAgentByFlag } from '../agents.js'
 import { UserError } from '../utils/errors.js'
 
 export async function apiRollback(slug, options = {}) {
@@ -102,7 +102,9 @@ export async function apiRollback(slug, options = {}) {
     if (target === 'project') {
       baseDir = join(process.cwd(), '.agents', 'skills')
     } else {
-      const agent = getAgentByFlag(target)
+      // The lockfile records agent names (claude-code), not flags (claude).
+      const agent =
+        getAgentByFlag(target) || agents.find((a) => a.name === target)
       if (!agent) continue
       baseDir = agent.getDir()
     }

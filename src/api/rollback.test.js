@@ -219,4 +219,48 @@ describe('apiRollback', () => {
     const restoredSkill = await readFile(join(agentDir, 'SKILL.md'), 'utf-8')
     assert.equal(restoredSkill, 'restored content')
   })
+
+  it('restores agents recorded by name when their flag differs', async () => {
+    // The installer records agent names in the lockfile (claude-code,
+    // opencode, ...), while those agents' flags are claude, agents, ...
+    const { default: AGENTS, getAgentByFlag } = await import('../agents.js')
+    const renamed = AGENTS.filter((agent) => !getAgentByFlag(agent.name))
+    assert.ok(renamed.length > 0)
+    // Rollback replaces these directories, so keep them inside the test HOME.
+    for (const agent of renamed) {
+      assert.ok(agent.getDir().startsWith(tempDir), agent.getDir())
+    }
+
+    const namedSlug = 'named-rollback'
+    await setupLockfile({
+      [namedSlug]: {
+        slug: namedSlug,
+        contentSha: 'current',
+        agents: renamed.map((agent) => agent.name),
+        installedAt: new Date().toISOString(),
+        history: [
+          {
+            contentSha: 'prev',
+            fileHashes: { 'SKILL.md': 'old-hash' },
+            installedAt: '2026-07-01T00:00:00.000Z',
+          },
+        ],
+      },
+    })
+    await setupBackup(namedSlug, { 'SKILL.md': 'restored content' }, 'b-001')
+
+    const result = await rollbackModule.apiRollback(namedSlug)
+
+    assert.deepEqual(
+      result.targets.map((t) => t.target),
+      renamed.map((agent) => agent.name),
+    )
+    for (const agent of renamed) {
+      const restored = await readFile(
+        join(agent.getDir(), namedSlug, 'SKILL.md'),
+        'utf-8',
+      )
+      assert.equal(restored, 'restored content', agent.name)
+    }
+  })
 })
