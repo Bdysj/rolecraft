@@ -1,6 +1,12 @@
 import { describe, it, before, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  symlinkSync,
+} from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -876,6 +882,45 @@ Content
         () => resolverModule.resolveSource('not-a-git-url'),
         /Invalid source/,
       )
+    })
+  })
+
+  describe('git URL temp directory', () => {
+    it('removes the clone directory when git clone fails', async () => {
+      await freshImport()
+      let cloneDir
+      resolverModule.setSpawnSync((_cmd, args) => {
+        cloneDir = args.at(-1)
+        return {
+          status: 128,
+          stderr: Buffer.from('fatal: repository not found'),
+        }
+      })
+      await assert.rejects(
+        () => resolverModule.resolveSource('https://gitlab.com/owner/missing'),
+        /Failed to clone repository from https:\/\/gitlab\.com\/owner\/missing/,
+      )
+      assert.ok(cloneDir, 'git clone was not called')
+      assert.equal(existsSync(cloneDir), false)
+    })
+
+    it('removes the clone directory after reading the skills', async () => {
+      await freshImport()
+      let cloneDir
+      resolverModule.setSpawnSync((_cmd, args) => {
+        cloneDir = args.at(-1)
+        writeFileSync(
+          join(cloneDir, 'SKILL.md'),
+          '---\nname: cloned\ndescription: from git\n---\n# Cloned\n',
+        )
+        return { status: 0 }
+      })
+      const skill = await resolverModule.resolveSource(
+        'https://gitlab.com/owner/skill',
+      )
+      assert.equal(skill.sourceType, 'git')
+      assert.ok(skill.fileContents['SKILL.md'])
+      assert.equal(existsSync(cloneDir), false)
     })
   })
 
