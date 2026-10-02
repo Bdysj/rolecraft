@@ -32,7 +32,7 @@ A `curl` or `wget` download piped (or chained with `;`) into `sh`, `bash`, `zsh`
 
 Install one-liners in a skill's files count as well, so a skill whose `SKILL.md` tells the agent to run `curl -fsSL https://example.com/install.sh | bash` is blocked unless you pass `--yes`.
 
-Piping a download into a tool that only reads it is not flagged: `| jq`, `| shasum -a 256`, or Python given its own program (`| python3 -m json.tool`, `| python3 -c "import json, sys; ..."`). A Python program that can run code (`exec`, `eval`, `subprocess`, `-m code`, ...) is flagged again, and so is `| python3 -`.
+Piping a download into a tool that only reads it is not flagged: `| jq`, `| shasum -a 256`, or Python given a module that only formats it (`| python3 -m json.tool`). Everything else given to Python counts, including `| python3 -`, `| python3 -c "..."`, and any other module — a `-c` program cannot be told apart from one that only parses data, so it is flagged and you are asked. That is deliberate: an earlier version tried to spot an execution by name and let `os.execv`, `os.popen`, `ctypes` and others through while reading as data-only.
 
 ## Example Scenarios
 

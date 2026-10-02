@@ -20,10 +20,15 @@ const QUOTED = String.raw`'[^'\n]{0,200}'|"[^"\n]{0,200}"`
 const FLAG = String.raw`-(?:[^\s'"|;&]|${QUOTED})*`
 const VALUE = String.raw`(?:${QUOTED}|[^\s'"|;&-][^\s'"|;&]*)`
 const FLAGS = String.raw`(?:${SEP}${FLAG}(?:${SEP}${VALUE})?)*?`
-const RUNS_CODE = String.raw`\b(?:exec|eval|compile|runpy|__import__|importlib|subprocess|os\.system|pty)\b`
+// - Python reading the download as data is not execution, but only for a
+//   module that provably only formats it. Anything else given to `python3` —
+//   a `-c` program, `-m code`, or any other module — can run what it reads, so
+//   it counts. This is an allow-list on purpose: the previous version tried to
+//   recognise an execution by name (exec, eval, os.system, …), and a name list
+//   is not a closed set — `os.execv`, `os.popen`, `ctypes`, `pexpect` and
+//   others ran the download while reading as data-only.
 const PYTHON_DATA_ONLY =
-  String.raw`[ \t]+(?:-[A-Za-z]+[ \t]+)*-[A-Za-z]*[cm]` +
-  String.raw`(?![ \t]+code\b)(?![\s\S]{0,300}?${RUNS_CODE})`
+  String.raw`[ \t]+(?:-[A-Za-z]+[ \t]+)*-m[ \t]+json\.tool\b`
 const PYTHON = String.raw`python[23]?\b(?!${PYTHON_DATA_ONLY})`
 const DOWNLOAD_AND_EXECUTE = new RegExp(
   String.raw`(?:curl|wget)${FLAGS}(?:\s|\\\r?\n)+['"]?https?:\/\/[^\s'"]+['"]?${FLAGS}` +
