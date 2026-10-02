@@ -27,8 +27,7 @@ const FLAGS = String.raw`(?:${SEP}${FLAG}(?:${SEP}${VALUE})?)*?`
 //   recognise an execution by name (exec, eval, os.system, …), and a name list
 //   is not a closed set — `os.execv`, `os.popen`, `ctypes`, `pexpect` and
 //   others ran the download while reading as data-only.
-const PYTHON_DATA_ONLY =
-  String.raw`[ \t]+(?:-[A-Za-z]+[ \t]+)*-m[ \t]+json\.tool\b`
+const PYTHON_DATA_ONLY = String.raw`[ \t]+(?:-[A-Za-z]+[ \t]+)*-m[ \t]+json\.tool\b`
 const PYTHON = String.raw`python[23]?\b(?!${PYTHON_DATA_ONLY})`
 const DOWNLOAD_AND_EXECUTE = new RegExp(
   String.raw`(?:curl|wget)${FLAGS}(?:\s|\\\r?\n)+['"]?https?:\/\/[^\s'"]+['"]?${FLAGS}` +
